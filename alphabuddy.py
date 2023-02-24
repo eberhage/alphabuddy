@@ -107,7 +107,7 @@ def check_settings(settings):
         sys.exit(1)
     if not "data_dir" in settings["versions"][default_version]:
         log.error(
-            "A »data_dir« has ro be provided under »versions«/<version> in the settings. Exiting."
+            "A »data_dir« has to be provided under »versions«/<version> in the settings. Exiting."
         )
         sys.exit(1)
     if not "path" in settings["versions"][default_version]:
