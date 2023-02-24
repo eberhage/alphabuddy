@@ -1,4 +1,4 @@
-__version_info__ = (1, 0, 0)
+__version_info__ = (1, 0, 1)
 __version__ = ".".join(map(str, __version_info__))
 __author__ = "Jan Eberhage, Institute for Biophysical Chemistry, Hannover Medical School (eberhage.jan@mh-hannover.de)"
 
@@ -82,7 +82,11 @@ class AlphaFoldJob:
     def move_job_to_output(self, job):
         os.rename(job.path, os.path.join(self.output_dir, self.name, job.name))
         log.info("Moving job to output directory.")
-
+        
+    def print_job_details(self):
+        with open(os.path.join(self.output_dir, self.name, "alphabuddy_job_details.txt"), "w") as f:
+            for key, val in self.__dict__.items():
+                f.write(key + ": " + val + "\n")
 
 def check_settings(settings):
     if not type(settings["versions"]) is dict:
@@ -255,6 +259,7 @@ def main():
                     move_job_to_failed(next_job, args.directory)
                 else:
                     job.move_job_to_output(next_job)
+                    job.print_job_details()
             else:
                 move_job_to_failed(next_job, args.directory)
         else:
