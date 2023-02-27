@@ -1,4 +1,4 @@
-__version_info__ = (1, 0, 1)
+__version_info__ = (1, 0, 2)
 __version__ = ".".join(map(str, __version_info__))
 __author__ = "Jan Eberhage, Institute for Biophysical Chemistry, Hannover Medical School (eberhage.jan@mh-hannover.de)"
 
@@ -79,10 +79,6 @@ class AlphaFoldJob:
         af_process = subprocess.run(subprocess_list)
         return af_process.returncode
 
-    def move_job_to_output(self, job):
-        os.rename(job.path, os.path.join(self.output_dir, self.name, job.name))
-        log.info("Moving job to output directory.")
-        
     def print_job_details(self):
         with open(os.path.join(self.output_dir, self.name, "alphabuddy_job_details.txt"), "w") as f:
             for key, val in self.__dict__.items():
@@ -202,6 +198,12 @@ def move_job_to_failed(job, directory):
     os.rename(job.path, os.path.join(failed_path, job.name))
     log.info(f"Moving job to »{failed_path}«.")
 
+def move_job_to_done(job, directory):
+    done_path = os.path.join(directory, "done_jobs")
+    if not os.path.exists(done_path):
+        os.mkdir(done_path)
+    os.rename(job.path, os.path.join(done_path, job.name))
+    log.info(f"Moving job to »{done_path}«.")
 
 def main():
     global log
@@ -258,7 +260,7 @@ def main():
                 if code:
                     move_job_to_failed(next_job, args.directory)
                 else:
-                    job.move_job_to_output(next_job)
+                    move_job_to_done(next_job, args.directory)
                     job.print_job_details()
             else:
                 move_job_to_failed(next_job, args.directory)
