@@ -6,6 +6,7 @@ import os
 import sys
 import argparse
 import yaml
+import json
 import logging
 import time
 import datetime
@@ -80,9 +81,8 @@ class AlphaFoldJob:
         return af_process.returncode
 
     def print_job_details(self):
-        with open(os.path.join(self.output_dir, self.name, "alphabuddy_job_details.txt"), "w") as f:
-            for key, val in self.__dict__.items():
-                f.write(key + ": " + val + "\n")
+        with open(os.path.join(self.output_dir, self.name, "alphabuddy_job_details.json"), 'w') as f:
+            json.dump(self.__dict__, f, indent=2)
 
 def check_settings(settings):
     if not type(settings["versions"]) is dict:
