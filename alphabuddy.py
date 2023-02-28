@@ -81,19 +81,27 @@ class AlphaFoldJob:
         return af_process.returncode
 
     def print_job_details(self):
-        with open(os.path.join(self.output_dir, self.name, "alphabuddy_job_details.json"), 'w') as f:
+        with open(
+            os.path.join(self.output_dir, self.name, "alphabuddy_job_details.json"), "w"
+        ) as f:
             json.dump(self.__dict__, f, indent=2)
 
     def run_alphaplots(self, settings):
         if not hasattr(self, "alphaplots"):
             pass
         alphaplots_path = settings["alphaplots"]["path"]
-        subprocess_list = ["python3", alphaplots_path, "--input_dir="+os.path.join(self.output_dir, self.name), "--yes"]
+        subprocess_list = [
+            "python3",
+            alphaplots_path,
+            "--input_dir=" + os.path.join(self.output_dir, self.name),
+            "--yes",
+        ]
         if "rmpkl" in self.alphaplots:
             subprocess_list.append("--rmpkl")
         if "jsondump" in self.alphaplots:
             subprocess_list.append("--jsondump")
         subprocess.run(subprocess_list)
+
 
 def check_settings(settings):
     if "versions" not in settings or not type(settings["versions"]) is dict:
@@ -106,7 +114,8 @@ def check_settings(settings):
         (
             version
             for version in settings["versions"].keys()
-            if "default" in settings["versions"][version].keys() and settings["versions"][version]["default"] == True
+            if "default" in settings["versions"][version].keys()
+            and settings["versions"][version]["default"] == True
         ),
         None,
     )
@@ -131,11 +140,15 @@ def check_settings(settings):
         try:
             from matplotlib import pyplot as plt
         except ModuleNotFoundError:
-            log.error('Module »matplotlib« is not installed.')
-            log.error('Please try »python3 -m pip install matplotlib«.')
+            log.error("Module »matplotlib« is not installed.")
+            log.error("Please try »python3 -m pip install matplotlib«.")
             sys.exit(1)
-        if not "path" in settings["alphaplots"] or not os.path.exists(settings["alphaplots"]["path"]):
-            log.error(f"»alphaplots« was not found under the path given in the settings. Aborting.")
+        if not "path" in settings["alphaplots"] or not os.path.exists(
+            settings["alphaplots"]["path"]
+        ):
+            log.error(
+                f"»alphaplots« was not found under the path given in the settings. Aborting."
+            )
             sys.exit(1)
 
     log.info("Found valid settings")
@@ -221,12 +234,14 @@ def move_job_to_failed(job, directory):
     os.rename(job.path, os.path.join(failed_path, job.name))
     log.info(f"Moving job to »{failed_path}«.")
 
+
 def move_job_to_done(job, directory):
     done_path = os.path.join(directory, "done_jobs")
     if not os.path.exists(done_path):
         os.mkdir(done_path)
     os.rename(job.path, os.path.join(done_path, job.name))
     log.info(f"Moving job to »{done_path}«.")
+
 
 def main():
     global log
@@ -297,6 +312,7 @@ def main():
                 and (entry.name.endswith(".yaml") or entry.name.endswith(".yml"))
             ]:
                 time.sleep(3)
+
 
 if __name__ == "__main__":
     main()
