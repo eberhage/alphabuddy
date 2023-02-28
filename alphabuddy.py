@@ -1,4 +1,4 @@
-__version_info__ = (1, 0, 2)
+__version_info__ = (1, 0, 3)
 __version__ = ".".join(map(str, __version_info__))
 __author__ = "Jan Eberhage, Institute for Biophysical Chemistry, Hannover Medical School (eberhage.jan@mh-hannover.de)"
 
@@ -62,7 +62,7 @@ class AlphaFoldJob:
                 self.alphafold_path, "alphafold-main", "docker", "run_docker.py"
             )
         )
-        subprocess_list.append("--max_template_date=" + self.max_template_date)
+        subprocess_list.append("--max_template_date=" + str(self.max_template_date))
         subprocess_list.append("--data_dir=" + self.data_dir)
         subprocess_list.append("--docker_user=" + self.docker_user)
         subprocess_list.append("--output_dir=" + self.output_dir)
@@ -84,8 +84,19 @@ class AlphaFoldJob:
         with open(os.path.join(self.output_dir, self.name, "alphabuddy_job_details.json"), 'w') as f:
             json.dump(self.__dict__, f, indent=2)
 
+    def run_alphaplots(self, settings):
+        if not hasattr(self, "alphaplots"):
+            pass
+        alphaplots_path = settings["alphaplots"]["path"]
+        subprocess_list = ["python3", alphaplots_path, "--input_dir="+os.path.join(self.output_dir, self.name), "--yes"]
+        if "rmpkl" in self.alphaplots:
+            subprocess_list.append("--rmpkl")
+        if "jsondump" in self.alphaplots:
+            subprocess_list.append("--jsondump")
+        subprocess.run(subprocess_list)
+
 def check_settings(settings):
-    if not type(settings["versions"]) is dict:
+    if "versions" not in settings or not type(settings["versions"]) is dict:
         log.error(
             "The settings file seems to have a bad layout for the »versions«. It should be a dictionary. Exiting."
         )
@@ -95,7 +106,7 @@ def check_settings(settings):
         (
             version
             for version in settings["versions"].keys()
-            if settings["versions"][version]["default"] == True
+            if "default" in settings["versions"][version].keys() and settings["versions"][version]["default"] == True
         ),
         None,
     )
@@ -115,6 +126,18 @@ def check_settings(settings):
             "A »path« has to be provided under »versions«/<version> in the settings. Exiting."
         )
         sys.exit(1)
+
+    if "alphaplots" in settings:
+        try:
+            from matplotlib import pyplot as plt
+        except ModuleNotFoundError:
+            log.error('Module »matplotlib« is not installed.')
+            log.error('Please try »python3 -m pip install matplotlib«.')
+            sys.exit(1)
+        if not "path" in settings["alphaplots"] or not os.path.exists(settings["alphaplots"]["path"]):
+            log.error(f"»alphaplots« was not found under the path given in the settings. Aborting.")
+            sys.exit(1)
+
     log.info("Found valid settings")
 
 
@@ -236,7 +259,7 @@ def main():
 
     input_path = os.path.join(args.directory, "input")
     if not os.path.exists(input_path):
-        log.error(f"»{os.path.abspath(input_path)}« was not found. Aborting")
+        log.error(f"»{os.path.abspath(input_path)}« was not found. Aborting.")
         sys.exit(1)
 
     while True:
@@ -261,6 +284,7 @@ def main():
                     move_job_to_failed(next_job, args.directory)
                 else:
                     move_job_to_done(next_job, args.directory)
+                    job.run_alphaplots(settings)
                     job.print_job_details()
             else:
                 move_job_to_failed(next_job, args.directory)
@@ -273,7 +297,6 @@ def main():
                 and (entry.name.endswith(".yaml") or entry.name.endswith(".yml"))
             ]:
                 time.sleep(3)
-
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,13 @@
+#example settings
+docker_user: root
+output_dir: ./results
+versions:
+  version_1_name:
+    path: /path/to/af/version/1
+    data_dir: /path/to/af/data_dir
+    default: true
+  version_2_name:
+    path: /path/to/af/version/2
+    data_dir: /path/to/af/data_dir
+alphaplots:
+  path: ./path/to/alphaplots.py
