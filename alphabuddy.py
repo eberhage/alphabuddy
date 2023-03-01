@@ -15,7 +15,7 @@ import time
 import datetime
 from pathlib import Path
 import subprocess
-import importlib.util
+import pkg_resources
 
 
 class CustomFormatter(logging.Formatter):
@@ -38,6 +38,13 @@ class CustomFormatter(logging.Formatter):
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt, "%Y-%m-%d %H:%M:%S")
         return formatter.format(record)
+
+
+class PathEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (Path, datetime.date)):
+            return str(obj)
+        return super().default(obj)
 
 
 class AlphaFoldJob:
@@ -91,7 +98,7 @@ class AlphaFoldJob:
 
     def print_job_details(self):
         with open(self.job_dir / "alphabuddy_job_details.json", "w") as f:
-            json.dump(self.__dict__, f, indent=2)
+            json.dump(self.__dict__, f, indent=2, cls=PathEncoder)
 
     def run_alphaplots(self, settings):
         if not hasattr(self, "alphaplots"):
@@ -160,27 +167,35 @@ def check_settings(settings):
         )
         sys.exit(1)
 
-    if settings.get("alphaplots"):
+    log.info("Found valid settings")
+
+
+def check_alphafold_requirements(settings):
+    for package in ["absl-py", "docker"]:
         try:
-            module_spec = importlib.util.find_spec("matplotlib")
-            if module_spec is None:
-                log.error("Module »matplotlib« is not installed.")
-                log.error("Please try »python3 -m pip install matplotlib«.")
-                sys.exit(1)
-        except ImportError:
-            log.error("Module »matplotlib« is not installed.")
-            log.error("Please try »python3 -m pip install matplotlib«.")
-            sys.exit(1)
-        if not settings["alphaplots"].get("path") or not os.path.exists(
-            settings["alphaplots"]["path"]
-        ):
-            log.error(
-                "»alphaplots« was not found under the path given in the "
-                "settings. Aborting."
-            )
+            pkg_resources.get_distribution(package)
+        except pkg_resources.DistributionNotFound:
+            log.error(f"Module »{package}« is not installed.")
+            log.error(f"Please try »python3 -m pip install {package}«.")
             sys.exit(1)
 
-    log.info("Found valid settings")
+
+def check_alphaplots_requirements(settings):
+    try:
+        pkg_resources.get_distribution("matplotlib")
+    except pkg_resources.DistributionNotFound:
+        log.error("Module »matplotlib« is not installed.")
+        log.error("Please try »python3 -m pip install matplotlib«.")
+        sys.exit(1)
+    if (
+        not settings["alphaplots"].get("path") or
+        not os.path.exists(settings["alphaplots"]["path"])
+    ):
+        log.error(
+            "»alphaplots« was not found under the path given in the settings. "
+            "Aborting."
+        )
+        sys.exit(1)
 
 
 def get_next_job(path):
@@ -318,6 +333,11 @@ def main():
 
         settings = yaml.safe_load(open(settings_path))
         check_settings(settings)
+        check_alphafold_requirements(settings)
+        plotting = False
+        if settings.get("alphaplots"):
+            check_alphaplots_requirements(settings)
+            plotting = True
 
         next_job = get_next_job(input_path)
 
@@ -330,12 +350,15 @@ def main():
                     move_job(next_job, args.directory, "failed_jobs")
                 else:
                     move_job(next_job, args.directory, "done_jobs")
-                    job.run_alphaplots(settings)
+                    if plotting:
+                        job.run_alphaplots(settings)
+                    else:
+                        job.alphaplots = False
                     job.print_job_details()
             else:
                 move_job(next_job, args.directory, "failed_jobs")
         else:
-            log.info("Waiting for jobs. CTRL+C for interuption.")
+            log.info("Waiting for jobs. CTRL+C for interruption.")
             while not [
                 entry
                 for entry in os.scandir(input_path)
