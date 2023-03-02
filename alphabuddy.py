@@ -1,4 +1,4 @@
-__version_info__ = (1, 0, 4)
+__version_info__ = (1, 0, 5)
 __version__ = ".".join(map(str, __version_info__))
 __author__ = (
     "Jan Eberhage, Institute for Biophysical Chemistry, "
@@ -156,25 +156,15 @@ def check_settings(settings):
             "settings. Exiting."
         )
         sys.exit(1)
-    if not settings["versions"][default_version].get("data_dir"):
-        log.error(
-            "A »data_dir« has to be provided under »versions«/<version> in "
-            "the settings. Exiting."
-        )
-        sys.exit(1)
-    if not settings["versions"][default_version].get("path"):
-        log.error(
-            "A »path« has to be provided under »versions«/<version> in the "
-            "settings. Exiting."
-        )
-        sys.exit(1)
 
-    if not settings["versions"][default_version].get("venv"):
-        log.error(
-            "A »venv« has to be provided under »versions«/<version> in the "
-            "settings. Exiting."
-        )
-        sys.exit(1)
+    for version, details in settings["versions"].items():
+        for item in ["data_dir", "path", "venv"]:
+            if not details.get(item):
+                log.error(
+                    f"A »{item}« has to be provided under »versions«/{version}"
+                    " in the settings. Exiting."
+                )
+                sys.exit(1)
 
     log.info("Found valid settings")
 
@@ -193,7 +183,7 @@ def check_alphaplots_requirements(settings):
     if (not venv or not os.path.exists(Path(venv) / "bin" / "python3")):
         log.error(
             "No python installation found in »alphaplots« virtual "
-            "envirnonment or no »venv« specified. Aborting."
+            "envirnonment or no »venv« specified in the settings. Aborting."
         )
         sys.exit(1)
 
@@ -205,12 +195,12 @@ def check_alphaplots_requirements(settings):
         "--version"
     ]
 
-    ap_check = subprocess.run(subprocess_list)
+    ap_check = subprocess.run(subprocess_list, stdout=subprocess.DEVNULL)
 
     return ap_check.returncode
 
 
-def get_next_job(path):
+def get_next_job(path, main_dir):
     jobs = [
         entry
         for entry in os.scandir(path)
@@ -221,7 +211,13 @@ def get_next_job(path):
         return False
     jobs.sort(key=lambda x: os.path.getmtime(x))
     for job in jobs:
-        job_dict = yaml.safe_load(open(job.path))
+        try:
+            with open(job.path, "r") as f:
+                job_dict = yaml.safe_load(f)
+        except Exception:
+            log.warning(f"The file »{job.path}« could not be loaded. Skipping.")
+            move_job(job, main_dir, "failed_jobs")
+            return False
         if "urgent" in job_dict and job_dict["urgent"] is True:
             return job
     return jobs[0]
@@ -352,13 +348,27 @@ def main():
         if settings.get("alphaplots"):
             code = check_alphaplots_requirements(settings)
             if code:
+                venv = settings["alphaplots"].get("venv")
                 log.error(
-                    "There was a problem with your alphaplots "
-                    "installation. Check the message on screen. Aborting.")
+                    "There was a problem with your alphaplots installation. "
+                    "Check the message produced py alphaplots above."
+                )
+                if venv:
+                    activate_path = Path(venv) / "bin" / "activate"
+                    log.warning(
+                        "Before you install anything, make sure to activate "
+                        f"the alphaplots-env with »source {activate_path}«"
+                    )
+                    log.warning(
+                        "use »deactivate« after the installation and "
+                        "reactivate the virtual environment (source ...) for "
+                        "alphabuddy if necessary."
+                    )
+                log.error("Aborting.")
                 sys.exit(1)
             plotting = True
 
-        next_job = get_next_job(input_path)
+        next_job = get_next_job(input_path, args.directory)
 
         if next_job:
             if check_config(next_job, settings):
