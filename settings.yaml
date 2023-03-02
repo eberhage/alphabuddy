@@ -3,11 +3,14 @@ docker_user: root
 output_dir: ./results
 versions:
   version_1_name:
-    path: /path/to/af/version/1
+    path: /path/to/af/version/1/main-folder
+    venv: /path/to/af/version/1/alphafold-env
     data_dir: /path/to/af/data_dir
     default: true
   version_2_name:
-    path: /path/to/af/version/2
+    path: /path/to/af/version/2/main-folder
+    venv: /path/to/af/version/2/alphafold-env
     data_dir: /path/to/af/data_dir
 alphaplots:
   path: ./path/to/alphaplots.py
+  venv: /path/to/alphaplots-env

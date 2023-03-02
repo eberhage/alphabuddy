@@ -51,6 +51,7 @@ class AlphaFoldJob:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
         self.alphafold_path = Path(self.alphafold_path)
+        self.alphafold_venv = Path(self.alphafold_venv)
         self.data_dir = Path(self.data_dir)
         self.output_dir = Path(self.output_dir)
         self.job_dir = self.output_dir / self.name
@@ -69,10 +70,10 @@ class AlphaFoldJob:
             ]
 
     def run_alphafold(self):
-        subprocess_list = ["python3"]
-        subprocess_list.append(
-            self.alphafold_path / "alphafold-main" / "docker" / "run_docker.py"
-        )
+        subprocess_list = [
+            self.alphafold_venv / "bin" / "python3",
+            self.alphafold_path / "docker" / "run_docker.py"
+            ]
 
         for param in [
             "max_template_date",
@@ -103,9 +104,10 @@ class AlphaFoldJob:
     def run_alphaplots(self, settings):
         if not hasattr(self, "alphaplots"):
             pass
-        alphaplots_path = Path(settings["alphaplots"]["path"])
+        alphaplots_path = Path(settings["alphaplots"].get("path"))
+        alphaplots_venv = Path(settings["alphaplots"].get("venv"))
         subprocess_list = [
-            "python3",
+            alphaplots_venv / "bin" / "python3",
             alphaplots_path,
             f"--input_dir={self.job_dir}",
             "--yes",
@@ -167,35 +169,45 @@ def check_settings(settings):
         )
         sys.exit(1)
 
+    if not settings["versions"][default_version].get("venv"):
+        log.error(
+            "A »venv« has to be provided under »versions«/<version> in the "
+            "settings. Exiting."
+        )
+        sys.exit(1)
+
     log.info("Found valid settings")
 
 
-def check_alphafold_requirements(settings):
-    for package in ["absl-py", "docker"]:
-        try:
-            pkg_resources.get_distribution(package)
-        except pkg_resources.DistributionNotFound:
-            log.error(f"Module »{package}« is not installed.")
-            log.error(f"Please try »python3 -m pip install {package}«.")
-            sys.exit(1)
-
-
 def check_alphaplots_requirements(settings):
-    try:
-        pkg_resources.get_distribution("matplotlib")
-    except pkg_resources.DistributionNotFound:
-        log.error("Module »matplotlib« is not installed.")
-        log.error("Please try »python3 -m pip install matplotlib«.")
-        sys.exit(1)
-    if (
-        not settings["alphaplots"].get("path") or
-        not os.path.exists(settings["alphaplots"]["path"])
-    ):
+    path = settings["alphaplots"].get("path")
+    venv = settings["alphaplots"].get("venv")
+
+    if (not path or not os.path.exists(path)):
         log.error(
             "»alphaplots« was not found under the path given in the settings. "
             "Aborting."
         )
         sys.exit(1)
+
+    if (not venv or not os.path.exists(Path(venv) / "bin" / "python3")):
+        log.error(
+            "No python installation found in »alphaplots« virtual "
+            "envirnonment or no »venv« specified. Aborting."
+        )
+        sys.exit(1)
+
+    alphaplots_path = Path(path)
+    alphaplots_venv = Path(venv)
+    subprocess_list = [
+        alphaplots_venv / "bin" / "python3",
+        alphaplots_path,
+        "--version"
+    ]
+
+    ap_check = subprocess.run(subprocess_list)
+
+    return ap_check.returncode
 
 
 def get_next_job(path):
@@ -277,6 +289,9 @@ def create_alphafold_job(job, settings, args):
     job_dict["alphafold_path"] = settings["versions"][job_dict["version"]].get(
         "path"
     )
+    job_dict["alphafold_venv"] = settings["versions"][job_dict["version"]].get(
+        "venv"
+    )
     job_dict["docker_user"] = settings.get("docker_user", "root")
 
     return AlphaFoldJob(**job_dict)
@@ -333,10 +348,14 @@ def main():
 
         settings = yaml.safe_load(open(settings_path))
         check_settings(settings)
-        check_alphafold_requirements(settings)
         plotting = False
         if settings.get("alphaplots"):
-            check_alphaplots_requirements(settings)
+            code = check_alphaplots_requirements(settings)
+            if code:
+                log.error(
+                    "There was a problem with your alphaplots "
+                    "installation. Check the message on screen. Aborting.")
+                sys.exit(1)
             plotting = True
 
         next_job = get_next_job(input_path)
