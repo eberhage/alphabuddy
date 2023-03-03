@@ -136,7 +136,7 @@ def check_settings(settings):
         not isinstance(settings["versions"], dict)
     ):
         log.error(
-            "The settings file seems to have a bad layout for the Â»versionsÂ«. "
+            "The settings file seems to have a bad layout for the »versions«. "
             "It should be a dictionary. Exiting."
         )
         sys.exit(1)
@@ -152,7 +152,7 @@ def check_settings(settings):
 
     if not default_version:
         log.error(
-            "No default version was chosen under Â»versionsÂ«/<version> in the "
+            "No default version was chosen under »versions«/<version> in the "
             "settings. Exiting."
         )
         sys.exit(1)
@@ -161,7 +161,7 @@ def check_settings(settings):
         for item in ["data_dir", "path", "venv"]:
             if not details.get(item):
                 log.error(
-                    f"A Â»{item}Â« has to be provided under Â»versionsÂ«/{version}"
+                    f"A »{item}« has to be provided under »versions«/{version}"
                     " in the settings. Exiting."
                 )
                 sys.exit(1)
@@ -175,15 +175,15 @@ def check_alphaplots_requirements(settings):
 
     if (not path or not os.path.exists(path)):
         log.error(
-            "Â»alphaplotsÂ« was not found under the path given in the settings. "
+            "»alphaplots« was not found under the path given in the settings. "
             "Aborting."
         )
         sys.exit(1)
 
     if (not venv or not os.path.exists(Path(venv) / "bin" / "python3")):
         log.error(
-            "No python installation found in Â»alphaplotsÂ« virtual "
-            "envirnonment or no Â»venvÂ« specified in the settings. Aborting."
+            "No python installation found in »alphaplots« virtual "
+            "envirnonment or no »venv« specified in the settings. Aborting."
         )
         sys.exit(1)
 
@@ -215,7 +215,7 @@ def get_next_job(path, main_dir):
             with open(job.path, "r") as f:
                 job_dict = yaml.safe_load(f)
         except Exception:
-            log.warning(f"The file Â»{job.path}Â« could not be loaded. Skipping.")
+            log.warning(f"The file »{job.path}« could not be loaded. Skipping.")
             move_job(job, main_dir, "failed_jobs")
             return False
         if "urgent" in job_dict and job_dict["urgent"] is True:
@@ -228,7 +228,7 @@ def check_config(job, settings):
         with open(job.path, "r") as f:
             job_dict = yaml.safe_load(f)
     except Exception:
-        log.warning(f"The file Â»{job.path}Â« could not be loaded. Skipping.")
+        log.warning(f"The file »{job.path}« could not be loaded. Skipping.")
         return False
 
     if (
@@ -236,14 +236,14 @@ def check_config(job, settings):
         job_dict["version"] not in settings["versions"]
     ):
         log.warning(
-            f"The file Â»{job.path}Â« contains a value for the key Â»versionÂ« "
+            f"The file »{job.path}« contains a value for the key »version« "
             "that is not included in your settings file. Skipping."
         )
         return False
 
     if "sequences" not in job_dict:
         log.warning(
-            f"The file Â»{job.path}Â« has no Â»sequencesÂ«. This is mandatory. "
+            f"The file »{job.path}« has no »sequences«. This is mandatory. "
             "Skipping."
         )
         return False
@@ -251,8 +251,8 @@ def check_config(job, settings):
     sequences = job_dict["sequences"]
     if not isinstance(sequences, dict) or not sequences:
         log.warning(
-            f"The file Â»{job.path}Â« seems to have a bad layout for the "
-            "Â»sequencesÂ«. It should be an indented dictionary. Skipping."
+            f"The file »{job.path}« seems to have a bad layout for the "
+            "»sequences«. It should be an indented dictionary. Skipping."
         )
         return False
 
@@ -298,7 +298,7 @@ def move_job(job, directory, target_dir_name):
     if not os.path.exists(target_dir_path):
         os.mkdir(target_dir_path)
     os.rename(job.path, os.path.join(target_dir_path, job.name))
-    log.info(f"Moving job to Â»{target_dir_path}Â«.")
+    log.info(f"Moving job to »{target_dir_path}«.")
 
 
 def main():
@@ -330,14 +330,14 @@ def main():
 
     input_path = os.path.join(args.directory, "input")
     if not os.path.exists(input_path):
-        log.error(f"Â»{os.path.abspath(input_path)}Â« was not found. Aborting.")
+        log.error(f"»{os.path.abspath(input_path)}« was not found. Aborting.")
         sys.exit(1)
 
     while True:
         settings_path = os.path.join(args.directory, "settings.yaml")
         if not os.path.exists(settings_path):
             log.error(
-                f"The file Â»{settings_path}Â« is mandatory. Please provide the "
+                f"The file »{settings_path}« is mandatory. Please provide the "
                 "settings at this specific location."
             )
             sys.exit(1)
@@ -357,10 +357,10 @@ def main():
                     activate_path = Path(venv) / "bin" / "activate"
                     log.warning(
                         "Before you install anything, make sure to activate "
-                        f"the alphaplots-env with Â»source {activate_path}Â«"
+                        f"the alphaplots-env with »source {activate_path}«"
                     )
                     log.warning(
-                        "use Â»deactivateÂ« after the installation and "
+                        "use »deactivate« after the installation and "
                         "reactivate the virtual environment (source ...) for "
                         "alphabuddy if necessary."
                     )
