@@ -1,4 +1,4 @@
-__version_info__ = (1, 0, 6)
+__version_info__ = (1, 0, 7)
 __version__ = ".".join(map(str, __version_info__))
 __author__ = (
     "Jan Eberhage, Institute for Biophysical Chemistry, "
@@ -15,7 +15,6 @@ import time
 import datetime
 from pathlib import Path
 import subprocess
-import pkg_resources
 
 
 class CustomFormatter(logging.Formatter):
@@ -105,9 +104,15 @@ class AlphaFoldJob:
         if not hasattr(self, "alphaplots"):
             pass
         alphaplots_path = Path(settings["alphaplots"].get("path"))
-        alphaplots_venv = Path(settings["alphaplots"].get("venv"))
+        alphaplots_venv = settings["alphaplots"].get("venv")
+
+        if alphaplots_venv:
+            interpreter = Path(alphaplots_venv) / "bin" / "python3"
+        else:
+            interpreter = "python3"
+
         subprocess_list = [
-            alphaplots_venv / "bin" / "python3",
+            interpreter,
             alphaplots_path,
             f"--input_dir={self.job_dir}",
             "--yes",
@@ -122,7 +127,7 @@ class AlphaFoldJob:
 
 def setup_logging():
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.DEBUG)
     console_handler.setFormatter(CustomFormatter())
@@ -152,8 +157,8 @@ def check_settings(settings):
 
     if not default_version:
         log.error(
-            "No default version was chosen under »versions«/<version> in the "
-            "settings. Exiting."
+            "No default version was chosen under »settings.yaml/versions«. "
+            "Exiting."
         )
         sys.exit(1)
 
@@ -161,36 +166,47 @@ def check_settings(settings):
         for item in ["data_dir", "path", "venv"]:
             if not details.get(item):
                 log.error(
-                    f"A »{item}« has to be provided under »versions«/{version}"
-                    " in the settings. Exiting."
+                    f"A »{item}« has to be provided under »settings.yaml/"
+                    "versions/{version}«. Exiting."
                 )
                 sys.exit(1)
-
-    log.info("Found valid settings")
+            if not Path(details.get(item)).is_dir():
+                log.error(
+                    f"The »{item}« under »settings.yaml/versions/{version}« "
+                    "is no valid directory. Exiting."
+                )
+                sys.exit(1)
 
 
 def check_alphaplots_requirements(settings):
     path = settings["alphaplots"].get("path")
     venv = settings["alphaplots"].get("venv")
 
-    if (not path or not os.path.exists(path)):
+    if not path or not Path(path).is_file():
         log.error(
             "»alphaplots« was not found under the path given in the settings. "
             "Aborting."
-        )
+            )
         sys.exit(1)
 
-    if (not venv or not os.path.exists(Path(venv) / "bin" / "python3")):
-        log.error(
-            "No python installation found in »alphaplots« virtual "
-            "envirnonment or no »venv« specified in the settings. Aborting."
-        )
-        sys.exit(1)
+    if not venv:
+        log.debug(
+            "No virtual environment provided for »alphaplots«. Fallback to "
+            "standard python interpreter."
+            )
+        interpreter = "python3"
+    else:
+        interpreter = Path(venv) / "bin" / "python3"
+        if not interpreter.is_file():
+            log.error(
+                "No python installation found in the virtual environment "
+                "provided under »settings.yaml/alphaplots/venv«. Aborting"
+                )
+            sys.exit(1)
 
     alphaplots_path = Path(path)
-    alphaplots_venv = Path(venv)
     subprocess_list = [
-        alphaplots_venv / "bin" / "python3",
+        interpreter,
         alphaplots_path,
         "--version"
     ]
@@ -200,10 +216,10 @@ def check_alphaplots_requirements(settings):
     return ap_check.returncode
 
 
-def get_next_job(path, main_dir):
+def get_next_job(input_path):
     jobs = [
         entry
-        for entry in os.scandir(path)
+        for entry in os.scandir(input_path)
         if entry.is_file() and entry.name.endswith((".yaml", ".yml"))
     ]
 
@@ -215,8 +231,10 @@ def get_next_job(path, main_dir):
             with open(job.path, "r") as f:
                 job_dict = yaml.safe_load(f)
         except Exception:
-            log.warning(f"The file »{job.path}« could not be loaded. Skipping.")
-            move_job(job, main_dir, "failed_jobs")
+            log.warning(
+                f"The file »{job.path}« could not be loaded. Skipping."
+            )
+            move_job(job, input_path.parent, "failed_jobs")
             return False
         if "urgent" in job_dict and job_dict["urgent"] is True:
             return job
@@ -276,7 +294,7 @@ def create_alphafold_job(job, settings, args):
     )
     job_dict.setdefault(
         "output_dir",
-        settings.get("output_dir", os.path.join(args.directory, "results")),
+        settings.get("output_dir", args.directory / "results"),
     )
 
     job_dict["data_dir"] = settings["versions"][job_dict["version"]].get(
@@ -294,10 +312,9 @@ def create_alphafold_job(job, settings, args):
 
 
 def move_job(job, directory, target_dir_name):
-    target_dir_path = os.path.join(directory, target_dir_name)
-    if not os.path.exists(target_dir_path):
-        os.mkdir(target_dir_path)
-    os.rename(job.path, os.path.join(target_dir_path, job.name))
+    target_dir_path = directory / target_dir_name
+    target_dir_path.mkdir(exist_ok=True)
+    os.rename(job.path, target_dir_path / job.name)
     log.info(f"Moving job to »{target_dir_path}«.")
 
 
@@ -315,6 +332,7 @@ def main():
     parser.add_argument(
         "directory",
         metavar="<alphabuddy_dir>",
+        type=Path,
         help="Relative or absolute path to the alphabuddy directory"
     )
     parser.add_argument(
@@ -328,47 +346,62 @@ def main():
     )
     args = parser.parse_args()
 
-    input_path = os.path.join(args.directory, "input")
-    if not os.path.exists(input_path):
-        log.error(f"»{os.path.abspath(input_path)}« was not found. Aborting.")
+    # Change the current working directory to resolve relative paths
+    os.chdir(args.directory)
+
+    input_path = args.directory / "input"
+    settings_path = args.directory / "settings.yaml"
+    if not input_path.is_dir():
+        input_path.mkdir()
+        log.info(
+            f"»{input_path}« was not found. The directory was created. You "
+            "can put your jobs there."
+            )
+
+    if not settings_path.is_file():
+        log.error(
+            f"The file »{settings_path}« is mandatory. Please provide the "
+            "settings at this specific location."
+            )
         sys.exit(1)
 
-    while True:
-        settings_path = os.path.join(args.directory, "settings.yaml")
-        if not os.path.exists(settings_path):
-            log.error(
-                f"The file »{settings_path}« is mandatory. Please provide the "
-                "settings at this specific location."
+    try:
+        with open(settings_path, "r") as f:
+            settings = yaml.safe_load(f)
+    except Exception:
+        log.error(
+            f"The file »{settings_path}« could not be loaded. There is most "
+            "likely a syntax error. Exiting."
             )
-            sys.exit(1)
+        sys.exit(1)
 
-        settings = yaml.safe_load(open(settings_path))
-        check_settings(settings)
-        plotting = False
-        if settings.get("alphaplots"):
-            code = check_alphaplots_requirements(settings)
-            if code:
-                venv = settings["alphaplots"].get("venv")
-                log.error(
-                    "There was a problem with your alphaplots installation. "
-                    "Check the message produced py alphaplots above."
+    check_settings(settings)
+    plotting = False
+    if settings.get("alphaplots"):
+        code = check_alphaplots_requirements(settings)
+        if code:
+            venv = settings["alphaplots"].get("venv")
+            log.error(
+                "There was a problem with your alphaplots installation. Check "
+                "the message produced py alphaplots above."
                 )
-                if venv:
-                    activate_path = Path(venv) / "bin" / "activate"
-                    log.warning(
-                        "Before you install anything, make sure to activate "
-                        f"the alphaplots-env with »source {activate_path}«"
+            if venv:
+                activate_path = Path(venv) / "bin" / "activate"
+                log.warning(
+                    "Before you install anything, make sure to activate the "
+                    f"alphaplots-env with »source {activate_path}«"
                     )
-                    log.warning(
-                        "use »deactivate« after the installation and "
-                        "reactivate the virtual environment (source ...) for "
-                        "alphabuddy if necessary."
+                log.warning(
+                    "use »deactivate« after the installation and reactivate "
+                    "the virtual environment (source ...) for alphabuddy if "
+                    "you were using one."
                     )
-                log.error("Aborting.")
-                sys.exit(1)
-            plotting = True
+            log.error("Aborting.")
+            sys.exit(1)
+        plotting = True
 
-        next_job = get_next_job(input_path, args.directory)
+    while True:
+        next_job = get_next_job(input_path)
 
         if next_job:
             if check_config(next_job, settings):
