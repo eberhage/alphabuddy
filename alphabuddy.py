@@ -1,4 +1,4 @@
-__version_info__ = (1, 0, 7)
+__version_info__ = (1, 0, 8)
 __version__ = ".".join(map(str, __version_info__))
 __author__ = (
     "Jan Eberhage, Institute for Biophysical Chemistry, "
@@ -49,6 +49,7 @@ class PathEncoder(json.JSONEncoder):
 class AlphaFoldJob:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
+        self.start_time = time.monotonic()
         self.alphafold_path = Path(self.alphafold_path).resolve()
         self.alphafold_venv = Path(self.alphafold_venv).resolve()
         self.data_dir = Path(self.data_dir).resolve()
@@ -93,7 +94,42 @@ class AlphaFoldJob:
                     f"--{optional_param}={getattr(self, optional_param)}"
                 )
 
-        af_process = subprocess.run(subprocess_list)
+        log_file = self.job_dir / "alphafold.log"
+        log.info(f"Logging AlphaFold output to »{log_file}«.")
+        with open(log_file, "w") as f:
+            f.write(
+                "Alphafold job started at "
+                f"{time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                )
+
+        af_process = subprocess.Popen(
+                subprocess_list,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True
+                )
+
+        while True:
+            elapsed_time = time.time() - self.start_time
+            elapsed_time_str = time.strftime(
+                "%H:%M:%S", time.gmtime(elapsed_time)
+                )
+            sys.stdout.write(f"\rElapsed time: {elapsed_time_str}")
+            sys.stdout.flush()
+            stdout_line = af_process.stdout.readline()
+            if stdout_line:
+                with open(log_file, "a") as f:
+                    f.write(stdout_line)
+                    f.flush()
+            stderr_line = af_process.stderr.readline()
+            if stderr_line:
+                with open(log_file, "a") as f:
+                    f.write(stderr_line)
+                    f.flush()
+            if af_process.poll() is not None:
+                break
+
+        sys.stdout.write("\n")
         return af_process.returncode
 
     def print_job_details(self):
@@ -216,25 +252,24 @@ def check_alphaplots_requirements(settings):
     return ap_check.returncode
 
 
-def get_next_job(input_path):
-    jobs = [
-        entry
-        for entry in os.scandir(input_path)
-        if entry.is_file() and entry.name.endswith((".yaml", ".yml"))
-    ]
+def yaml_from_input(input_path):
+    return list(input_path.glob("*.yaml")) + list(input_path.glob("*.yml"))
 
+
+def get_next_job(input_path):
+    jobs = yaml_from_input(input_path)
     if not jobs:
         return False
     jobs.sort(key=lambda x: os.path.getmtime(x))
     for job in jobs:
         try:
-            with open(job.path, "r") as f:
+            with open(job, "r") as f:
                 job_dict = yaml.safe_load(f)
         except Exception:
             log.warning(
-                f"The file »{job.path}« could not be loaded. Skipping."
+                f"The file »{job}« could not be loaded. Skipping."
             )
-            move_job(job, input_path.parent, "failed_jobs")
+            move_job(job, "failed_jobs")
             return False
         if "urgent" in job_dict and job_dict["urgent"] is True:
             return job
@@ -243,10 +278,10 @@ def get_next_job(input_path):
 
 def check_config(job, settings):
     try:
-        with open(job.path, "r") as f:
+        with open(job, "r") as f:
             job_dict = yaml.safe_load(f)
     except Exception:
-        log.warning(f"The file »{job.path}« could not be loaded. Skipping.")
+        log.warning(f"The file »{job}« could not be loaded. Skipping.")
         return False
 
     if (
@@ -254,14 +289,14 @@ def check_config(job, settings):
         job_dict["version"] not in settings["versions"]
     ):
         log.warning(
-            f"The file »{job.path}« contains a value for the key »version« "
+            f"The file »{job}« contains a value for the key »version« "
             "that is not included in your settings file. Skipping."
         )
         return False
 
     if "sequences" not in job_dict:
         log.warning(
-            f"The file »{job.path}« has no »sequences«. This is mandatory. "
+            f"The file »{job}« has no »sequences«. This is mandatory. "
             "Skipping."
         )
         return False
@@ -269,7 +304,7 @@ def check_config(job, settings):
     sequences = job_dict["sequences"]
     if not isinstance(sequences, dict) or not sequences:
         log.warning(
-            f"The file »{job.path}« seems to have a bad layout for the "
+            f"The file »{job}« seems to have a bad layout for the "
             "»sequences«. It should be an indented dictionary. Skipping."
         )
         return False
@@ -278,7 +313,7 @@ def check_config(job, settings):
 
 
 def create_alphafold_job(job, settings, args):
-    job_dict = yaml.safe_load(open(job.path))
+    job_dict = yaml.safe_load(open(job))
 
     job_dict.setdefault(
         "version",
@@ -288,7 +323,7 @@ def create_alphafold_job(job, settings, args):
             if version.get("default")
         ),
     )
-    job_dict.setdefault("name", Path(job.path).stem)
+    job_dict.setdefault("name", job.stem)
     job_dict.setdefault(
         "max_template_date", datetime.datetime.today().strftime("%Y-%m-%d")
     )
@@ -311,10 +346,10 @@ def create_alphafold_job(job, settings, args):
     return AlphaFoldJob(**job_dict)
 
 
-def move_job(job, directory, target_dir_name):
-    target_dir_path = directory / target_dir_name
+def move_job(job, target_dir_name):
+    target_dir_path = job.parents[1] / target_dir_name
     target_dir_path.mkdir(exist_ok=True)
-    os.rename(job.path, target_dir_path / job.name)
+    job.rename(target_dir_path / job.name)
     log.info(f"Moving job to »{target_dir_path}«.")
 
 
@@ -409,23 +444,19 @@ def main():
                 job.generate_fasta()
                 code = job.run_alphafold()
                 if code:
-                    move_job(next_job, args.directory, "failed_jobs")
+                    move_job(next_job, "failed_jobs")
                 else:
-                    move_job(next_job, args.directory, "done_jobs")
+                    move_job(next_job, "done_jobs")
                     if plotting:
                         job.run_alphaplots(settings)
                     else:
                         job.alphaplots = False
                     job.print_job_details()
             else:
-                move_job(next_job, args.directory, "failed_jobs")
+                move_job(next_job, "failed_jobs")
         else:
             log.info("Waiting for jobs. CTRL+C for interruption.")
-            while not [
-                entry
-                for entry in os.scandir(input_path)
-                if entry.is_file() and entry.name.endswith((".yaml", ".yml"))
-            ]:
+            while not yaml_from_input(input_path):
                 time.sleep(3)
 
 
