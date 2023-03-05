@@ -2,7 +2,7 @@
 name: fancy_name
 output_dir: ./results/custom_out_dir
 urgent: false
-version: version_2_name
+version: my_very_long_version_2_name
 model_preset: multimer
 num_multimer_predictions_per_model: 2
 models_to_relax: all
