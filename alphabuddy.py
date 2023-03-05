@@ -39,9 +39,9 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-class PathEncoder(json.JSONEncoder):
+class Encoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, (Path, datetime.date)):
+        if isinstance(obj, (Path, datetime.date, datetime.timedelta)):
             return str(obj)
         return super().default(obj)
 
@@ -49,7 +49,7 @@ class PathEncoder(json.JSONEncoder):
 class AlphaFoldJob:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
-        self.start_time = time.monotonic()
+        self.start_time = datetime.datetime.now()
         self.alphafold_path = Path(self.alphafold_path).resolve()
         self.alphafold_venv = Path(self.alphafold_venv).resolve()
         self.data_dir = Path(self.data_dir).resolve()
@@ -88,6 +88,7 @@ class AlphaFoldJob:
             "model_preset",
             "num_multimer_predictions_per_model",
             "models_to_relax",
+            "docker_image_name",
         ]:
             if hasattr(self, optional_param):
                 subprocess_list.append(
@@ -96,45 +97,12 @@ class AlphaFoldJob:
 
         log_file = self.job_dir / "alphafold.log"
         log.info(f"Logging AlphaFold output to »{log_file}«.")
-        with open(log_file, "w") as f:
-            f.write(
-                "Alphafold job started at "
-                f"{time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                )
-
-        af_process = subprocess.Popen(
-                subprocess_list,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True
-                )
-
-        while True:
-            elapsed_time = time.time() - self.start_time
-            elapsed_time_str = time.strftime(
-                "%H:%M:%S", time.gmtime(elapsed_time)
-                )
-            sys.stdout.write(f"\rElapsed time: {elapsed_time_str}")
-            sys.stdout.flush()
-            stdout_line = af_process.stdout.readline()
-            if stdout_line:
-                with open(log_file, "a") as f:
-                    f.write(stdout_line)
-                    f.flush()
-            stderr_line = af_process.stderr.readline()
-            if stderr_line:
-                with open(log_file, "a") as f:
-                    f.write(stderr_line)
-                    f.flush()
-            if af_process.poll() is not None:
-                break
-
-        sys.stdout.write("\n")
+        af_process = subprocess_log(subprocess_list, log_file)
         return af_process.returncode
 
     def print_job_details(self):
         with open(self.job_dir / "alphabuddy_job_details.json", "w") as f:
-            json.dump(self.__dict__, f, indent=2, cls=PathEncoder)
+            json.dump(self.__dict__, f, indent=2, cls=Encoder)
 
     def run_alphaplots(self, settings):
         if not hasattr(self, "alphaplots"):
@@ -158,7 +126,9 @@ class AlphaFoldJob:
             if param in self.alphaplots:
                 subprocess_list.append(f"--{param}")
 
-        subprocess.run(subprocess_list)
+        log_file = self.job_dir / "alphaplots.log"
+        log.info(f"Logging AlphaPlots output to »{log_file}«.")
+        subprocess_log(subprocess_list, log_file)
 
 
 def setup_logging():
@@ -169,6 +139,21 @@ def setup_logging():
     console_handler.setFormatter(CustomFormatter())
     logger.addHandler(console_handler)
     return logger
+
+
+def subprocess_log(commands, log_path):
+    with open(log_path, "w") as f, subprocess.Popen(
+        commands,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=1,
+        universal_newlines=True
+    ) as process:
+        for line in process.stdout:
+            sys.stdout.write(line)
+            f.write(line)
+            f.flush()
+    return process
 
 
 def check_settings(settings):
@@ -331,17 +316,15 @@ def create_alphafold_job(job, settings, args):
         "output_dir",
         settings.get("output_dir", args.directory / "results"),
     )
-
-    job_dict["data_dir"] = settings["versions"][job_dict["version"]].get(
-        "data_dir"
-    )
-    job_dict["alphafold_path"] = settings["versions"][job_dict["version"]].get(
-        "path"
-    )
-    job_dict["alphafold_venv"] = settings["versions"][job_dict["version"]].get(
-        "venv"
-    )
+    version_dict = settings["versions"][job_dict["version"]]
+    job_dict["data_dir"] = version_dict.get("data_dir")
+    job_dict["alphafold_path"] = version_dict.get("path")
+    job_dict["alphafold_venv"] = version_dict.get("venv")
     job_dict["docker_user"] = settings.get("docker_user", "root")
+
+    image = version_dict.get("docker_image_name")
+    if image:
+        job_dict["docker_image_name"] = image
 
     return AlphaFoldJob(**job_dict)
 
@@ -451,7 +434,9 @@ def main():
                         job.run_alphaplots(settings)
                     else:
                         job.alphaplots = False
-                    job.print_job_details()
+                job.end_time = datetime.datetime.now()
+                job.duration = job.end_time - job.start_time
+                job.print_job_details()
             else:
                 move_job(next_job, "failed_jobs")
         else:
