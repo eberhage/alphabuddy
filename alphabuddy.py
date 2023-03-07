@@ -1,4 +1,4 @@
-__version_info__ = (1, 0, 8)
+__version_info__ = (1, 0, 9)
 __version__ = ".".join(map(str, __version_info__))
 __author__ = (
     "Jan Eberhage, Institute for Biophysical Chemistry, "
@@ -106,7 +106,7 @@ class AlphaFoldJob:
 
     def run_alphaplots(self, settings):
         if not hasattr(self, "alphaplots"):
-            pass
+            return
         alphaplots_path = Path(settings["alphaplots"].get("path"))
         alphaplots_venv = settings["alphaplots"].get("venv")
 
