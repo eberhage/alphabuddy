@@ -1,4 +1,4 @@
-__version_info__ = (1, 0, 9)
+__version_info__ = (1, 1, 0)
 __version__ = ".".join(map(str, __version_info__))
 __author__ = (
     "Jan Eberhage, Institute for Biophysical Chemistry, "
@@ -64,9 +64,9 @@ class AlphaFoldJob:
         self.job_dir.mkdir(parents=True, exist_ok=True)
         with open(self.fasta_paths, "w") as f:
             [
-                f.write(f">{key}\n{val}\n")
-                for key, val
-                in self.sequences.items()
+                f.write(f">{name}\n{sequence}\n")
+                for entry in self.sequences
+                for name, sequence in entry.items()
             ]
 
     def run_alphafold(self):
@@ -287,10 +287,10 @@ def check_config(job, settings):
         return False
 
     sequences = job_dict["sequences"]
-    if not isinstance(sequences, dict) or not sequences:
+    if not isinstance(sequences, list) or not sequences:
         log.warning(
             f"The file »{job}« seems to have a bad layout for the "
-            "»sequences«. It should be an indented dictionary. Skipping."
+            "»sequences«. It should be a list. Skipping."
         )
         return False
 

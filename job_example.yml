@@ -8,9 +8,9 @@ num_multimer_predictions_per_model: 2
 models_to_relax: all
 max_template_date: 2123-01-02
 sequences:
-  sequence_1: MGHKLMERRD
-  sequence_2: TEST
-  sequence_3: ANTHERTEST
+  - sequence_1: MGHKLMERRD
+  - sequence_2: TEST
+  - sequence_3: ANTHERTEST
 alphaplots:
   - jsondump
   - rmpkl
